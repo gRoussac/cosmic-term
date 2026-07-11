@@ -83,6 +83,9 @@ mod terminal_theme;
 
 mod dnd;
 
+/// Cursor blink animation step (~20 fps).
+const CURSOR_BLINK_ANIMATION_STEP_MS: u64 = 50;
+
 use clap_lex::RawArgs;
 
 static ICON_CACHE: LazyLock<Mutex<IconCache>> = LazyLock::new(|| Mutex::new(IconCache::new()));
@@ -460,6 +463,7 @@ pub enum Message {
     ContextMenuPopupClosed(window::Id),
     CursorBlinkTick,
     CursorBlinkInterval(u16),
+    CursorBlinkFade(bool),
     CursorBlinkSetting(CursorBlinkSetting),
     CursorColorCustom(String),
     CursorColorSource(CursorColorSource),
@@ -1547,6 +1551,12 @@ impl App {
                             self.config.cursor_blink_interval_ms,
                             Message::CursorBlinkInterval,
                         ))
+                }),
+            )
+            .add_maybe(
+                (self.config.cursor_blink != CursorBlinkSetting::Never).then(|| {
+                    widget::settings::item::builder(fl!("cursor-blink-fade"))
+                        .toggler(self.config.cursor_blink_fade, Message::CursorBlinkFade)
                 }),
             );
 
@@ -2746,10 +2756,17 @@ impl Application for App {
                 config_set!(opacity, cmp::min(100, opacity));
             }
             Message::CursorBlinkTick => {
-                self.pane_model.toggle_focused_cursor_blink();
+                self.pane_model.advance_focused_cursor_blink(
+                    CURSOR_BLINK_ANIMATION_STEP_MS as u16,
+                    self.config.cursor_blink_fade,
+                );
             }
             Message::CursorBlinkInterval(interval_ms) => {
                 config_set!(cursor_blink_interval_ms, interval_ms.clamp(100, 2000));
+                return self.update_cursor_config();
+            }
+            Message::CursorBlinkFade(blink_fade) => {
+                config_set!(cursor_blink_fade, blink_fade);
                 return self.update_cursor_config();
             }
             Message::CursorBlinkSetting(blink) => {
@@ -3286,9 +3303,7 @@ impl Application for App {
                             && let Some(terminal) = tab_model.data::<Mutex<Terminal>>(entity)
                         {
                             let mut terminal = terminal.lock().unwrap();
-                            terminal.cursor_blink_visible = true;
-                            terminal.needs_update = true;
-                            terminal.update();
+                            terminal.refresh_cursor_display();
                         }
                     }
                     TermEvent::Exit => {
@@ -3860,10 +3875,8 @@ impl Application for App {
         let cursor_blink_sub = if self.config.cursor_blink != CursorBlinkSetting::Never
             && self.pane_model.any_focused_terminal_should_blink()
         {
-            cosmic::iced::time::every(Duration::from_millis(
-                self.config.cursor_blink_interval_ms as u64,
-            ))
-            .map(|_| Message::CursorBlinkTick)
+            cosmic::iced::time::every(Duration::from_millis(CURSOR_BLINK_ANIMATION_STEP_MS))
+                .map(|_| Message::CursorBlinkTick)
         } else {
             Subscription::none()
         };

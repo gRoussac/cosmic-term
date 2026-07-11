@@ -66,6 +66,7 @@ cursor-blink-interval-description = { $ms ->
     [one] { $ms } milliseconde
    *[other] { $ms } millisecondes
 }
+cursor-blink-fade = Fondu fluide du curseur
 
 ### Font
 

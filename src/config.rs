@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 
 use crate::{cursor::CursorSettings, fl, localize::LANGUAGE_SORTER, shortcuts::Shortcuts};
 
-pub const CONFIG_VERSION: u64 = 2;
+pub const CONFIG_VERSION: u64 = 3;
 pub const COSMIC_THEME_DARK: &str = "COSMIC Dark";
 pub const COSMIC_THEME_LIGHT: &str = "COSMIC Light";
 
@@ -278,6 +278,12 @@ pub struct Config {
     pub cursor_blink: CursorBlinkSetting,
     #[serde(default = "default_cursor_blink_interval_ms")]
     pub cursor_blink_interval_ms: u16,
+    #[serde(default = "default_cursor_blink_fade")]
+    pub cursor_blink_fade: bool,
+}
+
+fn default_cursor_blink_fade() -> bool {
+    true
 }
 
 fn default_cursor_unfocused_style() -> CursorStyleSetting {
@@ -317,6 +323,7 @@ impl Default for Config {
             cursor_unfocused_style: CursorStyleSetting::HollowBlock,
             cursor_blink: CursorBlinkSetting::RespectTerminal,
             cursor_blink_interval_ms: 500,
+            cursor_blink_fade: true,
         }
     }
 }

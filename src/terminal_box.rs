@@ -803,14 +803,16 @@ where
             let cursor_settings = terminal.cursor_settings();
             let is_focused = terminal.is_focused();
             let effective = effective_shape(&cursor_settings, is_focused, cursor.shape);
+            let overlay_opacity = terminal.cursor_overlay_opacity();
 
             if display_offset == 0
                 && effective != CursorShape::Hidden
-                && terminal.cursor_blink_visible
+                && !(effective == CursorShape::Block && is_focused)
+                && overlay_opacity > 0.0
             {
                 let col = cursor.point.column.0;
                 let line = cursor.point.line.0;
-                let color = terminal.colors()[NamedColor::Cursor]
+                let base_color = terminal.colors()[NamedColor::Cursor]
                     .or_else(|| terminal.term.lock().colors()[NamedColor::Cursor])
                     .map(|rgb| Color::from_rgb8(rgb.r, rgb.g, rgb.b))
                     .or_else(|| {
@@ -818,6 +820,12 @@ where
                             .map(|rgb| Color::from_rgb8(rgb.r, rgb.g, rgb.b))
                     })
                     .unwrap_or(Color::WHITE);
+                let color = Color::from_rgba(
+                    base_color.r,
+                    base_color.g,
+                    base_color.b,
+                    base_color.a * overlay_opacity,
+                );
                 let width = terminal.size().cell_width;
                 let height = terminal.size().cell_height;
                 let top_left = view_position

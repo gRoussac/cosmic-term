@@ -41,7 +41,7 @@ pub use alacritty_terminal::grid::Scroll as TerminalScroll;
 
 use crate::{
     config::{ColorSchemeKind, Config as AppConfig, ProfileId},
-    cursor::{CursorSettings, effective_shape, should_blink},
+    cursor::{CursorSettings, effective_shape, shape_supports_fade, should_blink},
     menu::MenuState,
     mouse_reporter::MouseReporter,
 };
@@ -234,7 +234,7 @@ impl TerminalPaneGrid {
         }
     }
 
-    pub fn toggle_focused_cursor_blink(&self) {
+    pub fn advance_focused_cursor_blink(&self, step_ms: u16, blink_fade: bool) {
         for (pane, tab_model) in self.panes.panes.iter() {
             if self.focus != *pane {
                 continue;
@@ -242,12 +242,9 @@ impl TerminalPaneGrid {
             let entity = tab_model.active();
             if let Some(terminal) = tab_model.data::<Mutex<Terminal>>(entity) {
                 let mut terminal = terminal.lock().unwrap();
-                if terminal.should_blink() {
-                    let visible = !terminal.cursor_blink_visible;
-                    terminal.set_cursor_blink_visible(visible);
-                    if terminal.needs_update {
-                        terminal.update();
-                    }
+                terminal.advance_cursor_blink_animation(step_ms, blink_fade);
+                if terminal.needs_update {
+                    terminal.update();
                 }
             }
         }
@@ -309,6 +306,9 @@ pub struct Terminal {
     use_bright_bold: bool,
     zoom_adj: i8,
     pub cursor_blink_visible: bool,
+    cursor_blink_opacity: f32,
+    cursor_blink_fade_rising: bool,
+    cursor_blink_elapsed_ms: u16,
     cursor_settings: CursorSettings,
 }
 
@@ -415,6 +415,9 @@ impl Terminal {
             zoom_adj: Default::default(),
             is_focused: true,
             cursor_blink_visible: true,
+            cursor_blink_opacity: 1.0,
+            cursor_blink_fade_rising: false,
+            cursor_blink_elapsed_ms: 0,
             cursor_settings: CursorSettings::from(app_config),
         })
     }
@@ -472,6 +475,9 @@ impl Terminal {
 
         if focus_changed {
             self.cursor_blink_visible = true;
+            self.cursor_blink_opacity = 1.0;
+            self.cursor_blink_fade_rising = false;
+            self.cursor_blink_elapsed_ms = 0;
             self.needs_update = true;
 
             let report_focus = self.term.lock().mode().contains(TermMode::FOCUS_IN_OUT);
@@ -502,11 +508,74 @@ impl Terminal {
         self.is_focused
     }
 
+    pub fn effective_cursor_shape(&self) -> CursorShape {
+        let term = self.term.lock();
+        let terminal_shape = term.renderable_content().cursor.shape;
+        effective_shape(&self.cursor_settings, self.is_focused, terminal_shape)
+    }
+
+    pub fn uses_fade_blink(&self) -> bool {
+        if !self.should_blink() || !self.cursor_settings.blink_fade {
+            return false;
+        }
+        shape_supports_fade(self.effective_cursor_shape())
+    }
+
+    pub fn cursor_overlay_opacity(&self) -> f32 {
+        if self.uses_fade_blink() {
+            self.cursor_blink_opacity
+        } else if self.cursor_blink_visible {
+            1.0
+        } else {
+            0.0
+        }
+    }
+
     pub fn refresh_cursor_display(&mut self) {
         self.cursor_blink_visible = true;
+        self.cursor_blink_opacity = 1.0;
+        self.cursor_blink_fade_rising = false;
+        self.cursor_blink_elapsed_ms = 0;
         self.set_redraw(true);
         self.needs_update = true;
         self.update();
+    }
+
+    pub fn advance_cursor_blink_animation(&mut self, step_ms: u16, blink_fade: bool) {
+        if !self.should_blink() {
+            return;
+        }
+
+        let shape = self.effective_cursor_shape();
+        let interval = self.cursor_settings.blink_interval_ms;
+        let half = interval / 2;
+
+        if shape == CursorShape::Block || !blink_fade || !shape_supports_fade(shape) {
+            self.cursor_blink_elapsed_ms = self.cursor_blink_elapsed_ms.saturating_add(step_ms);
+            if self.cursor_blink_elapsed_ms >= interval {
+                self.cursor_blink_elapsed_ms = 0;
+                self.set_cursor_blink_visible(!self.cursor_blink_visible);
+            }
+            self.cursor_blink_opacity = if self.cursor_blink_visible { 1.0 } else { 0.0 };
+            return;
+        }
+
+        let delta = f32::from(step_ms) / f32::from(half.max(1));
+        if self.cursor_blink_fade_rising {
+            self.cursor_blink_opacity = (self.cursor_blink_opacity + delta).min(1.0);
+            if self.cursor_blink_opacity >= 1.0 {
+                self.cursor_blink_opacity = 1.0;
+                self.cursor_blink_fade_rising = false;
+            }
+        } else {
+            self.cursor_blink_opacity = (self.cursor_blink_opacity - delta).max(0.0);
+            if self.cursor_blink_opacity <= 0.0 {
+                self.cursor_blink_opacity = 0.0;
+                self.cursor_blink_fade_rising = true;
+            }
+        }
+        self.cursor_blink_visible = self.cursor_blink_opacity > 0.0;
+        self.set_redraw(true);
     }
 
     pub fn set_cursor_blink_visible(&mut self, visible: bool) {
@@ -802,6 +871,10 @@ impl Terminal {
         let changed_cursor_settings = self.cursor_settings != CursorSettings::from(config);
         self.cursor_settings = CursorSettings::from(config);
         if changed_cursor_settings {
+            self.cursor_blink_visible = true;
+            self.cursor_blink_opacity = 1.0;
+            self.cursor_blink_fade_rising = false;
+            self.cursor_blink_elapsed_ms = 0;
             update = true;
         }
 

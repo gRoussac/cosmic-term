@@ -64,6 +64,7 @@ cursor-blink-interval-description = { $ms ->
     [one] { $ms } millisecond
    *[other] { $ms } milliseconds
 }
+cursor-blink-fade = Smooth cursor fade
 
 ### Font
 font = Font

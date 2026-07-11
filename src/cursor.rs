@@ -5,9 +5,7 @@ use alacritty_terminal::{
     vte::ansi::{CursorShape, Rgb},
 };
 
-use crate::config::{
-    Config, CursorBlinkSetting, CursorColorSource, CursorStyleSetting,
-};
+use crate::config::{Config, CursorBlinkSetting, CursorColorSource, CursorStyleSetting};
 
 /// Snapshot of cursor-related config passed to renderers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -18,6 +16,7 @@ pub struct CursorSettings {
     pub unfocused_style: CursorStyleSetting,
     pub blink: CursorBlinkSetting,
     pub blink_interval_ms: u16,
+    pub blink_fade: bool,
 }
 
 impl From<&Config> for CursorSettings {
@@ -29,6 +28,7 @@ impl From<&Config> for CursorSettings {
             unfocused_style: config.cursor_unfocused_style,
             blink: config.cursor_blink,
             blink_interval_ms: config.cursor_blink_interval_ms,
+            blink_fade: config.cursor_blink_fade,
         }
     }
 }
@@ -66,11 +66,7 @@ pub fn effective_shape(
     }
 }
 
-pub fn should_blink(
-    settings: &CursorSettings,
-    is_focused: bool,
-    terminal_blinking: bool,
-) -> bool {
+pub fn should_blink(settings: &CursorSettings, is_focused: bool, terminal_blinking: bool) -> bool {
     if !is_focused {
         return false;
     }
@@ -91,4 +87,11 @@ pub fn effective_cursor_rgb(settings: &CursorSettings, colors: &Colors) -> Optio
             b: hex.b,
         }),
     }
+}
+
+pub fn shape_supports_fade(shape: CursorShape) -> bool {
+    matches!(
+        shape,
+        CursorShape::Beam | CursorShape::Underline | CursorShape::HollowBlock
+    )
 }
