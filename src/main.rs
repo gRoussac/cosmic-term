@@ -458,7 +458,6 @@ pub enum Message {
     ZoomIn,
     ZoomOut,
     ZoomReset,
-    ContextMenuPopupClosed(window::Id),
     CursorBlinkTick,
     CursorBlinkInterval(u16),
     CursorBlinkSetting(CursorBlinkSetting),

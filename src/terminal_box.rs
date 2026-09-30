@@ -529,12 +529,11 @@ where
                         &mut self,
                         glyph: &LayoutGlyph,
                         renderer: &mut Renderer,
-                        is_focused: bool,
                     ) {
                         if glyph.metadata == self.metadata {
                             self.end_x = glyph.x + glyph.w;
                         } else {
-                            self.fill(renderer, is_focused);
+                            self.fill(renderer);
                             self.metadata = glyph.metadata;
                             self.glyph_font_size = glyph.font_size;
                             self.start_x = glyph.x;
@@ -542,11 +541,7 @@ where
                         }
                     }
 
-                    fn fill<Renderer: renderer::Renderer>(
-                        &mut self,
-                        renderer: &mut Renderer,
-                        _is_focused: bool,
-                    ) {
+                    fn fill<Renderer: renderer::Renderer>(&mut self, renderer: &mut Renderer) {
                         let cosmic_text_to_iced_color = |color: cosmic_text::Color| {
                             Color::from_rgba(
                                 f32::from(color.r()) / 255.0,
@@ -719,9 +714,9 @@ where
                     metadata_set,
                 };
                 for glyph in run.glyphs {
-                    bg_rect.update(glyph, renderer, state.is_focused);
+                    bg_rect.update(glyph, renderer);
                 }
-                bg_rect.fill(renderer, state.is_focused);
+                bg_rect.fill(renderer);
             }
         });
 
